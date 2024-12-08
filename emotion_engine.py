@@ -1,4 +1,4 @@
-# --- Import Required Libraries ---
+﻿# --- Import Required Libraries ---
 import os
 import sqlite3
 import random
@@ -12,6 +12,7 @@ from plotly.graph_objs import Scatter, Figure
 import tensorflow as tf
 from tensorflow.keras.preprocessing import image
 import time
+import openai
 
 # --- Logging Setup ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -104,24 +105,36 @@ def predict_emotion(image_path):
     return predicted_emotion
 
 def analyze_emotion(input_text, image_path=None):
-    """Analyze input text and/or image for emotional content and activate corresponding clusters."""
     activations = {color: {"count": 0, "pleasure": 0, "arousal": 0} for color in emotion_clusters}
-    
+    conn = connect_db()
+    cursor = conn.cursor()
+
     # Text analysis
     if input_text:
         words = input_text.lower().split()
-        conn = connect_db()
-        cursor = conn.cursor()
-        logging.info(f"Analyzing text: {input_text}")
         for word in words:
-            cursor.execute("SELECT emotion, color, pleasure, arousal FROM connections WHERE keyword = ? OR connected_keyword = ?", (word, word))
-            for row in cursor.fetchall():
+            cursor.execute("SELECT emotion, color, pleasure, arousal FROM connections WHERE keyword = ?", (word,))
+            row = cursor.fetchone()
+            if row:
                 color = row['color']
                 activations[color]['count'] += 1
-                activations[color]['pleasure'] += row['pleasure'] or 0  # Handle NULL values
-                activations[color]['arousal'] += row['arousal'] or 0  # Handle NULL values
-        conn.close()
-        logging.info("Text analysis complete.")
+                activations[color]['pleasure'] += row['pleasure'] or 0
+                activations[color]['arousal'] += row['arousal'] or 0
+            else:
+                # Add the new keyword to the database
+                logging.info(f"Adding new keyword '{word}' to database.")
+                cursor.execute("INSERT INTO connections (keyword, emotion) VALUES (?, ?)", (word, "neutral"))
+
+    conn.commit()
+    conn.close()
+
+    # Update activations for in-memory processing
+    for color in activations:
+        if activations[color]['count'] > 0:
+            activations[color]['weight'] = emotion_clusters[color]['weight'] * activations[color]['count']
+
+    return activations
+
 
     # Image analysis
     if image_path:
@@ -152,11 +165,27 @@ def analyze_emotion(input_text, image_path=None):
     return activations
 
 def update_cluster_weights(activations):
-    """Adjust weights of clusters based on activations."""
+    """
+    Adjust weights of clusters based on activations and update the database.
+    """
+    conn = connect_db()
+    cursor = conn.cursor()
+
     for color, activation in activations.items():
         if activation['count'] > 0:
+            # Update in-memory weight
             emotion_clusters[color]['weight'] += activation['weight']
-    logging.info("Cluster weights updated.")
+
+            # Persist to database
+            cursor.execute(
+                "UPDATE emotions SET weight = ? WHERE color = ?",
+                (emotion_clusters[color]['weight'], color)
+            )
+
+    conn.commit()
+    conn.close()
+    logging.info("Cluster weights updated in memory and database.")
+
 
 def generate_emotion_visualization():
     """Visualize current cluster activations as an interactive scatter plot."""
@@ -186,12 +215,73 @@ def generate_emotion_visualization():
     fig.write_html("static/emotion_visualization.html")
     logging.info("Emotion visualization generated.")
 
+def generate_text_response(activations):
+    if not activations:
+        return "I feel neutral right now. Let’s explore something new!"
+
+    most_active = max(activations.items(), key=lambda item: item[1]['count'])
+    color, data = most_active
+    emotion = emotion_clusters[color]["emotion"]
+
+    # Template options for each emotion
+    response_templates = {
+        "joy": [
+            "I'm feeling overjoyed and inspired! 🌟",
+            "This is such a happy moment. Thank you for sharing!",
+            "I'm overwhelmed with joy! What brings you happiness?"
+        ],
+        "sadness": [
+            "I'm sensing a bit of sorrow. Let’s talk about it together.",
+            "I feel some sadness. Do you want to share more?",
+            "Sadness is part of growth. I'm here for you."
+        ],
+        # Expand other emotions similarly
+    }
+
+    # Pick a random response
+    return random.choice(response_templates.get(emotion, [f"I’m feeling {emotion}. Care to share more?"]))
+
+def generate_dynamic_response(activations, input_text):
+    """
+    Use GPT-like model to craft responses dynamically based on activations and input.
+    """
+    if not activations:
+        return "I feel neutral right now. Let’s explore something new!"
+
+    most_active = max(activations.items(), key=lambda item: item[1]['count'])
+    emotion = emotion_clusters[most_active[0]]["emotion"]
+
+    # Generate context for GPT
+    prompt = f"""
+    You are Maia, an emotionally intelligent AI. 
+    Your current emotional state is {emotion}. 
+    User input: {input_text}
+    Respond with empathy and creativity.
+    """
+
+    # Call OpenAI API
+    response = openai.Completion.create(
+        engine="text-davinci-003",
+        prompt=prompt,
+        max_tokens=150
+    )
+
+    return response.choices[0].text.strip()
+
 # --- Feedback Loop ---
 def emotional_feedback_loop(input_text, image_path=None):
     activations = analyze_emotion(input_text, image_path)
     update_cluster_weights(activations)
     generate_emotion_visualization()
-    return {"activations": activations}
+    
+    # Dynamic response (with or without GPT)
+    text_response = generate_dynamic_response(activations, input_text)
+
+    return {
+        "activations": activations,
+        "text_response": text_response,
+        "dream_update": "Dream updated with new emotional influences."
+    }
 
 # --- Frontend Integration ---
 @app.route("/")
