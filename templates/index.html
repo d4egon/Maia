@@ -7,30 +7,20 @@
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
     <style>
-        /* --- Dark Theme Styles --- */
         body {
             font-family: Arial, sans-serif;
             background-color: #121212;
             color: #ffffff;
             padding: 2em;
         }
-
-        h1, h2 {
-            color: #f5f5f5;
-        }
-
-        #app {
-            max-width: 900px;
-            margin: 0 auto;
-        }
-
+        h1, h2 { color: #f5f5f5; }
+        #app { max-width: 900px; margin: 0 auto; }
         .input-area {
             display: flex;
             align-items: center;
             gap: 10px;
             margin-bottom: 1em;
         }
-
         input[type="text"], input[type="file"] {
             background: #333;
             color: #fff;
@@ -39,7 +29,6 @@
             font-size: 1em;
             border-radius: 5px;
         }
-
         button {
             padding: 0.5em 1em;
             font-size: 1em;
@@ -49,11 +38,7 @@
             cursor: pointer;
             border-radius: 5px;
         }
-
-        button:hover {
-            background-color: #0056b3;
-        }
-
+        button:hover { background-color: #0056b3; }
         #response-box {
             background: #222;
             color: #fff;
@@ -63,44 +48,7 @@
             margin-left: 10px;
             flex: 1;
         }
-
-        #visualization {
-            margin: 2em 0;
-            height: 500px;
-        }
-
-        #progress-container {
-            width: 100%;
-            background-color: #333;
-            border-radius: 5px;
-            overflow: hidden;
-            margin-bottom: 1em;
-        }
-
-        #progress {
-            width: 0%;
-            height: 20px;
-            background-color: #007bff;
-        }
-
-        .controls {
-            display: flex;
-            gap: 1em;
-            margin-top: 1em;
-        }
-
-        .control-btn {
-            background-color: #28a745;
-            padding: 0.5em 1em;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-        }
-
-        .control-btn:hover {
-            background-color: #218838;
-        }
+        #visualization { margin: 2em 0; height: 500px; }
     </style>
 </head>
 <body>
@@ -111,40 +59,44 @@
     <div class="input-area">
         <input type="text" id="inputText" placeholder="Enter text to influence Maia's learning...">
         <input type="file" id="fileInput" accept="image/*">
-        <button onclick="analyzeText()">Analyze</button>
+        <button id="analyzeButton">Analyze</button>
         <div id="response-box">Awaiting response...</div>
     </div>
 
     <div id="visualization"></div>
-
-    <h2>Learning Progress</h2>
-    <div id="progress-container">
-        <div id="progress"></div>
-    </div>
-
-    <h2>Controls</h2>
-    <div class="controls">
-        <button class="control-btn" onclick="simulateLearning()">Simulate Learning</button>
-        <button class="control-btn" onclick="resetProgress()">Reset Progress</button>
-        <button class="control-btn" onclick="generateDream()">Generate Dream</button>
-    </div>
 </div>
 
 <script>
-    let clusters = []; 
-    let currentProgress = 0;
+    let clusters = [];
+
+    // Activate Analyze Button on Click or Enter Key
+    document.addEventListener("DOMContentLoaded", () => {
+        const inputText = document.getElementById("inputText");
+        const analyzeButton = document.getElementById("analyzeButton");
+
+        // Left Click Activation
+        analyzeButton.addEventListener("click", () => {
+            analyzeText();
+        });
+
+        // Enter Key Activation
+        inputText.addEventListener("keydown", (event) => {
+            if (event.key === "Enter") {
+                event.preventDefault();  // Prevent form submission
+                analyzeText();
+            }
+        });
+    });
 
     function analyzeText() {
-        const text = document.getElementById('inputText').value;
-        const file = document.getElementById('fileInput').files[0];
-        
+        const text = document.getElementById("inputText").value;
+        const file = document.getElementById("fileInput").files[0];
+
         if (text || file) {
             let formData = new FormData();
             formData.append('text', text);
 
-            if (file) {
-                formData.append('image', file);
-            }
+            if (file) formData.append('image', file);
 
             $.ajax({
                 url: '/analyze',
@@ -155,8 +107,7 @@
                 success: function(response) {
                     clusters = response.activations;
                     updateVisualization();
-                    updateProgress(10);
-                    document.getElementById("response-box").textContent = response.text_response;
+                    document.getElementById("response-box").textContent = response.text_response || "Analysis complete!";
                 },
                 error: function(error) {
                     console.error('Error:', error);
@@ -164,8 +115,11 @@
                 }
             });
 
+            // Reset input fields
             document.getElementById('inputText').value = '';
             document.getElementById('fileInput').value = ''; 
+        } else {
+            alert("Please provide input text or an image.");
         }
     }
 
@@ -194,41 +148,6 @@
 
         Plotly.newPlot('visualization', data, layout);
     }
-
-    function updateProgress(increment) {
-        currentProgress = Math.min(100, currentProgress + increment);
-        document.getElementById('progress').style.width = `${currentProgress}%`;
-    }
-
-    function simulateLearning() {
-        updateProgress(20); 
-        document.getElementById("response-box").textContent = "Simulated learning complete!";
-    }
-
-    function resetProgress() {
-        currentProgress = 0;
-        document.getElementById('progress').style.width = '0%';
-        document.getElementById("response-box").textContent = "Progress reset.";
-    }
-
-    function generateDream() {
-        $.ajax({
-            url: '/visualize',
-            type: 'GET',
-            dataType: 'json',
-            success: function(response) {
-                window.open(response.path, '_blank');
-                document.getElementById("response-box").textContent = "Dream generated! Visualization opened.";
-            },
-            error: function(error) {
-                console.error('Error:', error);
-                alert('Failed to generate dream.');
-            }
-        });
-    }
-
-    // Initialize visualization on load
-    updateVisualization();
 </script>
 
 </body>
