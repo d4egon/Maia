@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Maia's Learning Progress</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <style>
+        /* ... Existing styles ... */
+    </style>
+</head>
+<body>
+
+<div id="app">
+    <h1>Maia's Learning Journey</h1>
+    <div class="input-area">
+        <input type="text" id="inputText" placeholder="Enter text to influence Maia's learning...">
+        <input type="file" id="fileInput" accept="image/*" placeholder="Select an image...">
+        <button onclick="analyzeText()">Analyze</button>
+    </div>
+    <div id="visualization"></div>
+    <div id="progress-container">
+        <div id="progress"></div>
+    </div>
+    <div class="controls">
+        <button class="control-btn" onclick="simulateLearning()">Simulate Learning</button>
+        <button class="control-btn" onclick="resetProgress()">Reset Progress</button>
+        <button class="control-btn" onclick="generateDream()">Generate Dream</button>
+    </div>
+</div>
+
+<script>
+    let clusters = []; 
+    let currentProgress = 0;
+
+    function analyzeText() {
+        const text = document.getElementById('inputText').value;
+        const file = document.getElementById('fileInput').files[0];
+        if (text || file) {
+            let formData = new FormData();
+            formData.append('text', text);
+            
+            if(file){
+                formData.append('image', file);
+            }
+
+            $.ajax({
+                url: '/analyze',
+                type: 'POST',
+                data: formData,
+                contentType: false,  // Required for FormData
+                processData: false,  // Required for FormData
+                success: function(response) {
+                    clusters = response.activations;
+                    updateVisualization();
+                    updateProgress(10);
+                },
+                error: function(error) {
+                    console.error('Error:', error);
+                    alert('An error occurred during analysis.');
+                }
+            });
+            document.getElementById('inputText').value = '';
+            document.getElementById('fileInput').value = ''; // Reset file input
+        }
+    }
+
+    function updateVisualization() {
+        const data = [{
+            x: Object.values(clusters).map(c => c.pleasure / c.count || 0),
+            y: Object.values(clusters).map(c => c.arousal / c.count || 0),
+            mode: 'markers',
+            type: 'scatter',
+            marker: {
+                size: Object.values(clusters).map(c => c.weight * 50),
+                color: Object.keys(clusters),
+                opacity: 0.8
+            },
+            text: Object.keys(clusters)
+        }];
+        
+        const layout = {
+            title: 'Emotional States: Pleasure vs Arousal',
+            xaxis: {title: 'Pleasure'},
+            yaxis: {title: 'Arousal'},
+            paper_bgcolor: 'rgba(0,0,0,0)',
+            plot_bgcolor: 'rgba(0,0,0,0)',
+            font: {color: '#ecf0f1'}
+        };
+
+        Plotly.newPlot('visualization', data, layout);
+    }
+
+    function updateProgress(increment) {
+        currentProgress = Math.min(100, currentProgress + increment);
+        document.getElementById('progress').style.width = `${currentProgress}%`;
+    }
+
+    function simulateLearning() {
+        updateProgress(20); 
+        alert("Maia has learned something new!");
+    }
+
+    function resetProgress() {
+        currentProgress = 0;
+        document.getElementById('progress').style.width = '0%';
+        alert("Progress reset!");
+    }
+
+    function generateDream() {
+        // Instead of updating the plot here, we'll open the visualization in a new tab or iframe
+        $.ajax({
+            url: '/visualize',
+            type: 'GET',
+            dataType: 'json',
+            success: function(response) {
+                console.log('Visualization updated:', response);
+                // Option 1: Open in new tab
+                window.open(response.path, '_blank');
+                
+                // Option 2: If you want to embed in an iframe (if you have a place for it in your HTML)
+                // document.getElementById('dreamIframe').src = response.path;
+
+                alert("Dream generated! Visualization opened in a new tab.");
+            },
+            error: function(error) {
+                console.error('Error:', error);
+                alert('Failed to generate dream.');
+            }
+        });
+    }
+
+    // Call this on page load to initialize the plot
+    updateVisualization();
+</script>
+
+</body>
+</html>
